@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import json; nb = json.load\\(open\\('nano4M_canny_extension.ipynb'\\)\\); print\\('Notebook cells:', len\\(nb['cells']\\)\\)\")",
+      "Bash(python3)",
+      "Bash(python -c ' *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" -ErrorAction SilentlyContinue; Get-ChildItem \"$env:LOCALAPPDATA\\\\Programs\\\\gh\\\\gh.exe\" -ErrorAction SilentlyContinue; Get-ChildItem \"C:\\\\Users\\\\Khalil\\\\scoop\\\\shims\\\\gh.exe\" -ErrorAction SilentlyContinue)",
+      "PowerShell(git remote get-url origin)"
+    ]
+  }
+}
