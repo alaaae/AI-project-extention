@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+outputs/
+wandb/
+data/
+com-304-data/
+com-304-data-cropped/
