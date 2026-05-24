@@ -1,7 +1,7 @@
 run_name: auto
 output_dir: ./outputs/auto
 global_vars:
-  batch_size: 256
+  batch_size: 192
   modalities:
   - tok_rgb@256
   - tok_depth@256
@@ -34,13 +34,13 @@ global_vars:
   - 1.0
   input_tokens_range:
   - 1
-  - 128
+  - 256
   target_tokens_range:
   - 1
-  - 128
-batch_size: ${global_vars.batch_size}
-total_tokens: 5000
-warmup_tokens: 500
+  - 256
+batch_size: 192
+total_tokens: 7000
+warmup_tokens: 700
 num_tokens_per_sample: 256
 lr: 0.0006
 min_lr: 1.0e-06
@@ -66,9 +66,9 @@ model_config:
   modalities: ${global_vars.modalities}
   vocab_sizes: ${global_vars.vocab_sizes}
   max_seq_lens: ${global_vars.max_seq_lens}
-  dim: 512
-  enc_depth: 6
-  dec_depth: 6
+  dim: 640
+  enc_depth: 8
+  dec_depth: 8
   head_dim: 64
   per_modality_loss_avg: true
 train_loader_config:
