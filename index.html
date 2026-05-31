@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teaching a Vision Model to See Edges — nano4M + Canny</title>
+<meta name="description" content="Adding Canny edge detection as a fifth modality to nano4M. No architecture changes. COM-304 Foundation Models, EPFL Spring 2026.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0c0e13;
+    --bg-card:#13161d;
+    --bg-card-2:#191d27;
+    --border:#1e2330;
+    --border-soft:#171b25;
+    --text:#e2e4e9;
+    --muted:#8b8fa3;
+    --muted-dim:#5f6477;
+    --accent:#4fc3f7;
+    --accent-dim:#1a3a4d;
+    --accent-glow:rgba(79,195,247,.10);
+    --highlight:#f7c948;
+    --red:#ef5350;
+    --green:#66bb6a;
+    --serif:'DM Serif Display',Georgia,serif;
+    --sans:'Source Sans 3',system-ui,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --maxw:820px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    font-size:17px;
+    line-height:1.75;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  ::selection{background:var(--accent-dim);color:#fff}
+
+  /* fixed background texture / glow */
+  .bg-field{position:fixed;inset:0;z-index:-2;pointer-events:none;
+    background:
+      radial-gradient(900px 600px at 78% -8%, rgba(79,195,247,.07), transparent 60%),
+      radial-gradient(700px 500px at 8% 12%, rgba(247,201,72,.04), transparent 60%);
+  }
+  .bg-grid{position:fixed;inset:0;z-index:-2;pointer-events:none;opacity:.4;
+    background-image:linear-gradient(var(--border-soft) 1px,transparent 1px),linear-gradient(90deg,var(--border-soft) 1px,transparent 1px);
+    background-size:48px 48px;
+    mask-image:radial-gradient(circle at 50% 0%, #000 0%, transparent 70%);
+    -webkit-mask-image:radial-gradient(circle at 50% 0%, #000 0%, transparent 70%);
+  }
+
+  a{color:var(--accent);text-decoration:none}
+
+  /* ---------- NAV ---------- */
+  nav{position:sticky;top:0;z-index:100;
+    background:rgba(12,14,19,.72);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+    border-bottom:1px solid var(--border);
+  }
+  .nav-inner{max-width:var(--maxw);margin:0 auto;padding:13px 24px;display:flex;align-items:center;gap:22px;overflow-x:auto;scrollbar-width:none}
+  .nav-inner::-webkit-scrollbar{display:none}
+  nav a{color:var(--muted);font-size:13.5px;font-weight:500;letter-spacing:.01em;white-space:nowrap;transition:color .2s;position:relative;padding:2px 0}
+  nav a:hover{color:var(--text)}
+  nav a.active{color:var(--accent)}
+  nav a.active::after{content:"";position:absolute;left:0;right:0;bottom:-4px;height:2px;background:var(--accent);border-radius:2px}
+  nav a.brand{color:var(--text);font-family:var(--mono);font-weight:600;font-size:15px;margin-right:auto;letter-spacing:-.01em}
+  nav a.brand:hover{color:var(--accent)}
+  nav a.brand b{color:var(--accent);font-weight:600}
+
+  /* ---------- HERO ---------- */
+  .hero{max-width:var(--maxw);margin:0 auto;padding:96px 24px 60px;text-align:center;position:relative}
+  .hero-glow{position:absolute;top:-40px;left:50%;width:560px;height:560px;transform:translateX(-50%);z-index:-1;
+    background:radial-gradient(circle, rgba(79,195,247,.16), transparent 62%);filter:blur(8px);pointer-events:none}
+  .badge{display:inline-block;font-family:var(--mono);font-size:11.5px;color:var(--accent);
+    border:1px solid var(--accent-dim);background:var(--accent-glow);padding:6px 14px;border-radius:30px;
+    margin-bottom:30px;letter-spacing:.08em;text-transform:uppercase}
+  .hero h1{font-family:var(--serif);font-size:clamp(2.3rem,6vw,3.7rem);line-height:1.08;color:#fff;margin-bottom:22px;letter-spacing:-.01em}
+  .hero h1 .em{color:var(--accent);font-style:italic}
+  .hero .sub{font-size:19px;color:var(--muted);max-width:620px;margin:0 auto 36px;line-height:1.62}
+  .hero .sub b{color:var(--text);font-weight:600}
+  .authors{font-size:15.5px;color:var(--text);margin-bottom:4px;font-weight:500}
+  .authors .todo{color:var(--muted-dim);font-style:italic;font-weight:400}
+  .affil{font-size:13.5px;color:var(--muted);margin-bottom:32px;font-family:var(--mono)}
+  .links{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+  .links a{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;border-radius:9px;font-size:14.5px;font-weight:600;transition:all .2s;border:1px solid transparent}
+  .btn-primary{background:var(--accent);color:#0a0c10}
+  .btn-primary:hover{background:#74d2fa;transform:translateY(-2px);box-shadow:0 10px 30px -10px rgba(79,195,247,.5)}
+  .btn-outline{border-color:var(--border);color:var(--text);background:var(--bg-card)}
+  .btn-outline:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-2px)}
+
+  /* hero modality chips */
+  .modchips{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:46px}
+  .chip{font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:7px;border:1px solid var(--border);color:var(--muted);background:var(--bg-card)}
+  .chip.old{opacity:.72}
+  .chip.new{color:var(--accent);border-color:var(--accent-dim);background:var(--accent-glow);box-shadow:0 0 0 1px var(--accent-dim) inset}
+  .chip .plus{color:var(--highlight);margin-right:5px}
+
+  /* ---------- SECTIONS ---------- */
+  section{max-width:var(--maxw);margin:0 auto;padding:30px 24px 56px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px;display:flex;align-items:center;gap:10px}
+  .eyebrow .num{color:var(--muted-dim)}
+  h2{font-family:var(--serif);font-size:clamp(1.7rem,4vw,2.35rem);color:#fff;margin-bottom:22px;line-height:1.14;letter-spacing:-.01em}
+  h2 .em{color:var(--accent);font-style:italic}
+  h3{font-size:1.12rem;font-weight:600;color:var(--text);margin:34px 0 12px}
+  h3 .k{font-family:var(--mono);color:var(--accent);font-size:.92em}
+  p{margin-bottom:17px;color:var(--text);text-wrap:pretty}
+  p.lead{font-size:19px;color:var(--muted);line-height:1.6}
+  p:last-child{margin-bottom:0}
+  strong{color:#fff;font-weight:600}
+  code{font-family:var(--mono);font-size:.86em;background:var(--bg-card-2);color:var(--accent);padding:2px 6px;border-radius:5px;border:1px solid var(--border)}
+  .muted{color:var(--muted)}
+
+  /* animated divider */
+  .divider{max-width:var(--maxw);margin:0 auto;height:1px;position:relative;overflow:visible}
+  .divider::before{content:"";position:absolute;left:24px;right:24px;top:0;height:1px;
+    background:linear-gradient(90deg,transparent,var(--border) 12%,var(--border) 88%,transparent);
+    transform:scaleX(0);transform-origin:center;transition:transform 1.1s cubic-bezier(.2,.7,.2,1)}
+  .divider.in::before{transform:scaleX(1)}
+  .divider::after{content:"";position:absolute;left:50%;top:-2px;width:5px;height:5px;border-radius:50%;
+    transform:translateX(-50%) scale(0);background:var(--accent);box-shadow:0 0 12px 2px var(--accent-glow);
+    transition:transform .5s ease .6s}
+  .divider.in::after{transform:translateX(-50%) scale(1)}
+
+  /* ---------- REVEAL ANIMATION ---------- */
+  .reveal{opacity:0;transform:translateY(26px);transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+
+  /* ---------- FIGURE / TILE SYSTEM ---------- */
+  .figure{margin:26px 0}
+  .fig-flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;justify-content:center}
+  .tile{display:flex;flex-direction:column;flex:1 1 0;min-width:120px}
+  .tile-img{position:relative;border:1px solid var(--border);border-radius:11px;overflow:hidden;background:#000;aspect-ratio:1;display:block}
+  .tile-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s cubic-bezier(.2,.7,.2,1)}
+  .tile-img.lite{background:#c9cbd0}
+  .tile-img:hover img{transform:scale(1.07)}
+  .tile-img.glow:hover{border-color:var(--accent-dim);box-shadow:0 0 0 1px var(--accent-dim),0 14px 40px -14px var(--accent-glow)}
+  .tile-tag{position:absolute;top:8px;left:8px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;
+    padding:3px 7px;border-radius:5px;background:rgba(12,14,19,.78);color:var(--muted);border:1px solid var(--border)}
+  .tile-tag.out{color:var(--accent);border-color:var(--accent-dim)}
+  .tile-cap{font-family:var(--mono);font-size:11.5px;color:var(--muted);text-align:center;margin-top:9px;line-height:1.4}
+  .tile-cap b{color:var(--text);font-weight:500}
+  .arrow{display:flex;align-items:center;justify-content:center;color:var(--muted-dim);font-size:20px;padding:0 4px;flex:0 0 30px;align-self:center;margin-top:-22px}
+  .arrow.gen{color:var(--accent)}
+  .arrow svg{width:22px;height:22px}
+  .fig-cap{font-size:13px;color:var(--muted);font-style:italic;text-align:center;margin-top:16px;line-height:1.5;max-width:640px;margin-left:auto;margin-right:auto}
+  .fig-cap b{font-style:normal;color:var(--text)}
+
+  /* generic grid of tiles (galleries) */
+  .grid{display:grid;gap:14px}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+
+  /* task row */
+  .task{display:grid;grid-template-columns:170px 1fr;gap:22px;align-items:center;padding:22px 0;border-bottom:1px solid var(--border)}
+  .task:last-child{border-bottom:none}
+  .task-head .t-io{font-family:var(--mono);font-size:13px;color:var(--text);display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:6px;font-weight:500}
+  .task-head .t-io .to{color:var(--accent)}
+  .task-head .t-io .ar{color:var(--muted-dim)}
+  .task-head .t-desc{font-size:13px;color:var(--muted);line-height:1.45}
+  .task .strip{display:flex;gap:10px}
+  .task .strip .tile{min-width:0}
+
+  /* ---------- PIPELINE STEPS ---------- */
+  .pipe{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:26px 0 10px}
+  .pstep{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:18px 16px;position:relative;transition:border-color .3s,transform .3s}
+  .pstep:hover{border-color:var(--accent-dim);transform:translateY(-3px)}
+  .pstep .pn{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.08em;margin-bottom:10px;display:flex;align-items:center;gap:7px}
+  .pstep .pn .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+  .pstep .pt{font-weight:600;color:#fff;font-size:15px;margin-bottom:5px}
+  .pstep .pd{font-size:12.5px;color:var(--muted);line-height:1.5}
+  .pstep .pd code{font-size:.84em;padding:1px 4px}
+
+  /* ---------- STAT CARDS ---------- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:30px 0 6px}
+  .stat{background:var(--bg-card);border:1px solid var(--border);border-radius:13px;padding:20px 16px;text-align:center;transition:border-color .3s,transform .3s}
+  .stat:hover{border-color:var(--accent-dim);transform:translateY(-3px)}
+  .stat .v{font-family:var(--serif);font-size:2.05rem;color:#fff;line-height:1;letter-spacing:-.01em}
+  .stat .v .u{font-size:1.05rem;color:var(--accent);font-family:var(--sans);font-weight:600;margin-left:1px}
+  .stat .l{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:9px;line-height:1.4}
+  .stat .l .dir{color:var(--green)}
+
+  /* ---------- TABLE ---------- */
+  .table-wrap{overflow-x:auto;margin:22px 0;border:1px solid var(--border);border-radius:12px}
+  table{width:100%;border-collapse:collapse;font-size:14.5px}
+  thead th{text-align:left;padding:13px 16px;font-family:var(--mono);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--bg-card);border-bottom:1px solid var(--border)}
+  thead th.r,tbody td.r{text-align:right;font-variant-numeric:tabular-nums}
+  tbody td{padding:13px 16px;border-bottom:1px solid var(--border);color:var(--text)}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr{transition:background .2s}
+  tbody tr:hover{background:var(--accent-glow)}
+  tbody td.r{font-family:var(--mono);font-size:14px}
+  tbody tr.best td{color:#fff}
+  tbody tr.best td.r{color:var(--accent);font-weight:600}
+  .bar{height:6px;border-radius:4px;background:var(--accent);display:inline-block;vertical-align:middle;margin-right:9px;transition:width 1.1s cubic-bezier(.2,.7,.2,1)}
+
+  /* ---------- INSIGHT / CALLOUT ---------- */
+  .insight{border-left:3px solid var(--highlight);background:linear-gradient(90deg,rgba(247,201,72,.06),transparent 80%);padding:18px 22px;border-radius:0 11px 11px 0;margin:26px 0}
+  .insight .il{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--highlight);margin-bottom:7px}
+  .insight p{font-size:15.5px;margin:0;color:var(--text)}
+  .insight p b{color:#fff}
+
+  .fail{border:1px solid rgba(239,83,80,.28);background:linear-gradient(180deg,rgba(239,83,80,.05),transparent);border-radius:13px;padding:22px 24px;margin:24px 0}
+  .fail .fl{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--red);margin-bottom:9px;display:flex;align-items:center;gap:8px}
+  .fail .fl .x{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--red);display:inline-flex;align-items:center;justify-content:center;font-size:10px;line-height:1}
+  .fail h3{margin-top:0;margin-bottom:8px}
+  .fail .verdict{font-family:var(--mono);font-size:12.5px;color:var(--red);margin-top:12px;padding-top:12px;border-top:1px dashed rgba(239,83,80,.25)}
+  .fail .verdict b{color:#fff}
+
+  /* ---------- VIDEO / DEMO ---------- */
+  .player{border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--bg-card);margin:24px 0}
+  .player-bar{display:flex;align-items:center;gap:7px;padding:11px 16px;border-bottom:1px solid var(--border);background:var(--bg-card-2)}
+  .player-bar .dots{display:flex;gap:6px}
+  .player-bar .dots i{width:10px;height:10px;border-radius:50%;display:block;background:var(--border)}
+  .player-bar .fn{font-family:var(--mono);font-size:12px;color:var(--muted);margin-left:6px}
+  .player-bar .live{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--accent);display:flex;align-items:center;gap:6px}
+  .player-bar .live .blink{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:blink 1.4s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  .player .stage{display:flex;align-items:center;justify-content:center;background:#0a0c10;padding:10px}
+  .player .stage img{max-width:100%;border-radius:6px;display:block;image-rendering:auto}
+  .demo-cap{font-size:13px;color:var(--muted);font-style:italic;text-align:center;padding:0 16px 16px}
+
+  .demo-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}
+  .demo{border:1px solid var(--border);border-radius:13px;overflow:hidden;background:var(--bg-card);transition:border-color .3s,transform .3s}
+  .demo:hover{border-color:var(--accent-dim);transform:translateY(-3px)}
+  .demo .dimg{background:#0a0c10;aspect-ratio:1;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .demo .dimg img{width:100%;height:100%;object-fit:contain}
+  .demo .dmeta{padding:13px 15px}
+  .demo .dmeta .dt{font-weight:600;color:#fff;font-size:14.5px;margin-bottom:3px}
+  .demo .dmeta .dd{font-size:12.5px;color:var(--muted);line-height:1.45}
+
+  /* ---------- ROADMAP ---------- */
+  .road{position:relative;margin:28px 0 6px;padding-left:30px}
+  .road::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:linear-gradient(180deg,var(--accent),var(--accent-dim) 70%,transparent)}
+  .ritem{position:relative;padding:0 0 24px 4px}
+  .ritem:last-child{padding-bottom:0}
+  .ritem::before{content:"";position:absolute;left:-30px;top:5px;width:11px;height:11px;border-radius:50%;background:var(--bg);border:2px solid var(--accent)}
+  .ritem .rt{font-weight:600;color:#fff;font-size:15px;margin-bottom:3px}
+  .ritem .rt .from{font-family:var(--mono);font-size:11px;color:var(--red);font-weight:400;margin-left:8px;text-transform:uppercase;letter-spacing:.04em}
+  .ritem .rd{font-size:13.5px;color:var(--muted);line-height:1.55}
+
+  /* ---------- TEAM ---------- */
+  .team{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:8px}
+  .member{background:var(--bg-card);border:1px solid var(--border);border-radius:13px;padding:20px}
+  .member .av{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent-dim),var(--bg-card-2));border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--mono);color:var(--accent);font-size:15px;font-weight:600;margin-bottom:14px}
+  .member .mn{font-weight:600;color:#fff;font-size:15.5px;margin-bottom:6px}
+  .member .mc{font-size:13px;color:var(--muted-dim);font-style:italic;line-height:1.5}
+
+  /* ---------- FOOTER ---------- */
+  footer{max-width:var(--maxw);margin:30px auto 0;padding:40px 24px 60px;border-top:1px solid var(--border);text-align:center;font-size:13px;color:var(--muted);font-family:var(--mono)}
+  footer .frow{margin-bottom:6px}
+  footer a{color:var(--accent)}
+  footer .refs{margin-top:20px;display:flex;gap:18px;justify-content:center;flex-wrap:wrap;font-size:12px}
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width:680px){
+    body{font-size:16px}
+    .hero{padding:64px 18px 44px}
+    section{padding:24px 18px 44px}
+    .pipe{grid-template-columns:1fr 1fr}
+    .stats{grid-template-columns:1fr 1fr}
+    .g4{grid-template-columns:1fr 1fr}
+    .team{grid-template-columns:1fr}
+    .demo-grid{grid-template-columns:1fr}
+    .task{grid-template-columns:1fr;gap:12px;align-items:start}
+    .fig-flow{gap:2px}
+    .arrow{flex-basis:20px;font-size:15px;margin-top:-20px}
+    .arrow svg{width:16px;height:16px}
+    .tile{min-width:0}
+  }
+  @media (max-width:420px){
+    .g3,.task .strip{}
+  }
+</style>
+</head>
+<body>
+<div class="bg-field"></div>
+<div class="bg-grid"></div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-inner">
+    <a href="#top" class="brand">nano<b>4M</b>·canny</a>
+    <a href="#question">Question</a>
+    <a href="#pipeline">Pipeline</a>
+    <a href="#capabilities">Capabilities</a>
+    <a href="#chained">Chained</a>
+    <a href="#demos">Demos</a>
+    <a href="#numbers">Numbers</a>
+    <a href="#failures">Post-mortem</a>
+    <a href="#next">Next</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero" id="top">
+  <div class="hero-glow" id="heroGlow"></div>
+  <div class="badge reveal">COM-304 · Foundation Models · EPFL · Spring 2026</div>
+  <h1 class="reveal">Teaching a Vision Model<br>to <span class="em">See Edges</span></h1>
+  <p class="sub reveal">We added Canny edge detection as a <b>fifth modality</b> to nano4M. No architecture changes — just data, a tokenizer, and a config file.</p>
+  <p class="authors reveal">Alae Baklouti &nbsp;·&nbsp; Kenza Hassayoune &nbsp;·&nbsp; <span class="todo">[Member 3]</span></p>
+  <p class="affil reveal">EPFL · Lausanne, Switzerland</p>
+  <div class="links reveal">
+    <a href="https://github.com/EPFL-VILAB/com-304-FM-project-2026" class="btn-primary">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      Code
+    </a>
+    <a href="#" class="btn-outline">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      Report (PDF)
+    </a>
+  </div>
+  <div class="modchips reveal">
+    <span class="chip old">tok_rgb</span>
+    <span class="chip old">tok_depth</span>
+    <span class="chip old">tok_normal</span>
+    <span class="chip old">scene_desc</span>
+    <span class="chip new"><span class="plus">+</span>tok_canny_edge</span>
+  </div>
+</header>
+
+<div class="divider"></div>
+
+<!-- 2. THE QUESTION -->
+<section id="question">
+  <div class="eyebrow reveal"><span class="num">01</span> The Question</div>
+  <h2 class="reveal">Can a fifth modality cost <span class="em">nothing</span>?</h2>
+  <p class="lead reveal">nano4M is trained on four modalities — RGB, depth, surface normals, and text scene descriptions — all flowing through the same any-to-any masked objective.</p>
+  <p class="reveal">So we asked a narrow, testable question: can we bolt on a <strong>sparse, structural modality drawn from a classical computer-vision algorithm</strong> — Canny edge maps — <strong>without touching the architecture at all?</strong> No new attention blocks, no new heads. Just a new stream of discrete tokens and one extra line in the modality list.</p>
+  <p class="reveal">If the answer is yes, the 4M recipe is even more general than it looks: any algorithm that turns an image into a grid you can tokenize becomes a first-class citizen the model can read from and write to.</p>
+</section>
+
+<div class="divider"></div>
+
+<!-- 3. THE PIPELINE -->
+<section id="pipeline">
+  <div class="eyebrow reveal"><span class="num">02</span> The Pipeline</div>
+  <h2 class="reveal">From raw pixels to <span class="em">edge tokens</span></h2>
+  <p class="reveal">Every Canny map is produced offline and stored as a <code>(10, 256)</code> array — ten augmentations, 256 tokens each — sitting alongside the existing RGB, depth and normal tokens so the model never knows the difference.</p>
+
+  <div class="pipe reveal">
+    <div class="pstep">
+      <div class="pn"><span class="dot"></span>STEP 1</div>
+      <div class="pt">Raw CLEVR PNGs</div>
+      <div class="pd">512×512 source renders — <code>50k</code> train / <code>5k</code> val / <code>5k</code> test.</div>
+    </div>
+    <div class="pstep">
+      <div class="pn"><span class="dot"></span>STEP 2</div>
+      <div class="pt">Shared crops</div>
+      <div class="pd">Reuse the dataset's <code>crop_settings</code> so edges align pixel-for-pixel with RGB / depth / normals.</div>
+    </div>
+    <div class="pstep">
+      <div class="pn"><span class="dot"></span>STEP 3</div>
+      <div class="pt">Dual-channel Canny</div>
+      <div class="pd">Luminance <code>30/100</code> <b>OR</b> HSV-saturation <code>20/80</code>, merged with bitwise-OR.</div>
+    </div>
+    <div class="pstep">
+      <div class="pn"><span class="dot"></span>STEP 4</div>
+      <div class="pt">DiVAE tokenizer</div>
+      <div class="pd">4M edge tokenizer → <code>16×16</code> grid, vocab <code>8192</code>.</div>
+    </div>
+  </div>
+  <p class="fig-cap reveal"><b>Figure 1.</b> The complete Canny modality pipeline. Nothing downstream of Step 4 was modified.</p>
+
+  <h3 class="reveal">Why raw images, not decoded tokens?</h3>
+  <p class="reveal">The obvious shortcut — decode the existing RGB tokens back to pixels and run Canny on those — fails quietly. The RGB tokenizer is <strong>lossy</strong>, and Canny <strong>amplifies</strong> exactly the compression artifacts it leaves behind: blocky contours, phantom edges, smeared boundaries. Working from the original pixels keeps lines crisp and, because we reuse the same crop settings, guarantees the edge map lands on the same grid as every other modality.</p>
+
+  <div class="figure reveal">
+    <div class="fig-flow">
+      <div class="tile">
+        <span class="tile-img lite glow"><span class="tile-tag">input</span><img src="assets/images/pipe_rgb.png" alt="Raw CLEVR RGB scene" loading="lazy"></span>
+        <span class="tile-cap"><b>Raw RGB</b><br>512px → crop</span>
+      </div>
+      <div class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+      <div class="tile">
+        <span class="tile-img glow"><span class="tile-tag">canny</span><img src="assets/images/pipe_canny.png" alt="Canny edge map" loading="lazy"></span>
+        <span class="tile-cap"><b>Canny edges</b><br>dual-channel</span>
+      </div>
+      <div class="arrow gen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+      <div class="tile">
+        <span class="tile-img glow"><span class="tile-tag out">round-trip</span><img src="assets/images/pipe_recon.png" alt="Tokenized and decoded edge map" loading="lazy"></span>
+        <span class="tile-cap"><b>Token round-trip</b><br>256 tokens, decoded</span>
+      </div>
+    </div>
+    <p class="fig-cap">Encoding then decoding the 256 edge tokens preserves the object contours almost exactly — the tokenizer is a faithful container for sparse line art.</p>
+  </div>
+
+  <h3 class="reveal">Picking the input resolution</h3>
+  <p class="reveal">Canny is resolution-sensitive: run it too small and edges fuse into blobs, too large and you drown in texture noise. We swept seven input resolutions, mapped every result back to 256×256, and tracked edge density. We settled on <strong>256px at ~1.6% edge pixels</strong> — dense enough to describe structure, sparse enough to tokenize cleanly.</p>
+
+  <div class="figure reveal">
+    <div class="grid g4">
+      <div class="tile"><span class="tile-img lite"><span class="tile-tag">rgb</span><img src="assets/images/res_rgb.png" alt="RGB input" loading="lazy"></span><span class="tile-cap"><b>RGB input</b></span></div>
+      <div class="tile"><span class="tile-img"><span class="tile-tag">64px</span><img src="assets/images/res_64.png" alt="64px Canny" loading="lazy"></span><span class="tile-cap">4.8% — blobs</span></div>
+      <div class="tile"><span class="tile-img"><span class="tile-tag">128px</span><img src="assets/images/res_128.png" alt="128px Canny" loading="lazy"></span><span class="tile-cap">2.8%</span></div>
+      <div class="tile"><span class="tile-img" style="border-color:var(--accent-dim);box-shadow:0 0 0 1px var(--accent-dim)"><span class="tile-tag out">256px ✓</span><img src="assets/images/res_256.png" alt="256px Canny chosen" loading="lazy"></span><span class="tile-cap" style="color:var(--accent)"><b>1.6% — chosen</b></span></div>
+      <div class="tile"><span class="tile-img"><span class="tile-tag">192px</span><img src="assets/images/res_192.png" alt="192px Canny" loading="lazy"></span><span class="tile-cap">2.1%</span></div>
+      <div class="tile"><span class="tile-img"><span class="tile-tag">320px</span><img src="assets/images/res_320.png" alt="320px Canny" loading="lazy"></span><span class="tile-cap">1.3%</span></div>
+      <div class="tile"><span class="tile-img"><span class="tile-tag">384px</span><img src="assets/images/res_384.png" alt="384px Canny" loading="lazy"></span><span class="tile-cap">1.0%</span></div>
+      <div class="tile"><span class="tile-img"><span class="tile-tag">480px</span><img src="assets/images/res_480.png" alt="480px Canny" loading="lazy"></span><span class="tile-cap">1.0% — sparse</span></div>
+    </div>
+    <p class="fig-cap"><b>Figure 2.</b> Edge density falls monotonically from 4.8% (64px) to 1.0% (480px). 256px sits at the knee of the curve.</p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- 4. CAPABILITIES -->
+<section id="capabilities">
+  <div class="eyebrow reveal"><span class="num">03</span> What the Model Can Do</div>
+  <h2 class="reveal">One new stream, <span class="em">six</span> new conversions</h2>
+  <p class="reveal">Because every modality is just tokens in the shared masked objective, adding edges instantly unlocks every direction in and out of the new stream — generation and inversion alike, all from the <strong>same 92M-parameter checkpoint</strong>.</p>
+
+  <div class="figure reveal">
+    <!-- RGB -> Canny -->
+    <div class="task">
+      <div class="task-head">
+        <div class="t-io">RGB <span class="ar">→</span> <span class="to">Canny</span></div>
+        <div class="t-desc">The model recovers the classical algorithm it was distilled from.</div>
+      </div>
+      <div class="strip">
+        <div class="tile"><span class="tile-img lite glow"><span class="tile-tag">in</span><img src="assets/images/r2c_rgb.png" alt="RGB input" loading="lazy"></span><span class="tile-cap">RGB in</span></div>
+        <div class="tile"><span class="tile-img glow"><span class="tile-tag">gt</span><img src="assets/images/r2c_cannygt.png" alt="Canny ground truth" loading="lazy"></span><span class="tile-cap">Canny GT</span></div>
+        <div class="tile"><span class="tile-img glow"><span class="tile-tag out">gen</span><img src="assets/images/r2c_cannygen.png" alt="Generated Canny" loading="lazy"></span><span class="tile-cap" style="color:var(--accent)">generated</span></div>
+      </div>
+    </div>
+    <!-- Canny -> RGB -->
+    <div class="task">
+      <div class="task-head">
+        <div class="t-io"><span style="color:var(--text)">Canny</span> <span class="ar">→</span> <span class="to">RGB</span></div>
+        <div class="t-desc">Structure in, appearance out — colour and material are hallucinated to fit the contours.</div>
+      </div>
+      <div class="strip">
+        <div class="tile"><span class="tile-img glow"><span class="tile-tag">in</span><img src="assets/images/cs_canny.png" alt="Canny input" loading="lazy"></span><span class="tile-cap">Canny in</span></div>
+        <div class="tile"><span class="tile-img lite glow"><span class="tile-tag out">gen</span><img src="assets/images/abl_only.png" alt="Generated RGB" loading="lazy"></span><span class="tile-cap" style="color:var(--accent)">RGB out</span></div>
+        <div class="tile"><span class="tile-img lite glow"><span class="tile-tag">gt</span><img src="assets/images/abl_gt.png" alt="RGB ground truth" loading="lazy"></span><span class="tile-cap">RGB GT</span></div>
+      </div>
+    </div>
+    <!-- Canny -> Depth -->
+    <div class="task">
+      <div class="task-head">
+        <div class="t-io"><span style="color:var(--text)">Canny</span> <span class="ar">→</span> <span class="to">Depth</span></div>
+        <div class="t-desc">Edges carry enough geometry to place objects in depth.</div>
+      </div>
+      <div class="strip">
+        <div class="tile"><span class="tile-img glow"><span class="tile-tag">in</span><img src="assets/images/ch_canny.png" alt="Canny input" loading="lazy"></span><span class="tile-cap">Canny in</span></div>
+        <div class="tile"><span class="tile-img lite glow"><span class="tile-tag out">gen</span><img src="assets/images/ch_depth.png" alt="Generated depth" loading="lazy"></span><span class="tile-cap" style="color:var(--accent)">depth out</span></div>
+      </div>
+    </div>
+    <!-- Canny -> Normals -->
+    <div class="task">
+      <div class="task-head">
+        <div class="t-io"><span style="color:var(--text)">Canny</span> <span class="ar">→</span> <span class="to">Normals</span></div>
+        <div class="t-desc">Surface orientation reconstructed from line drawings alone.</div>
+      </div>
+      <div class="strip">
+        <div class="tile"><span class="tile-img glow"><span class="tile-tag">in</span><img src="assets/images/ch_canny.png" alt="Canny input" loading="lazy"></span><span class="tile-cap">Canny in</span></div>
+        <div class="tile"><span class="tile-img lite glow"><span class="tile-tag out">gen</span><img src="assets/images/ch_normals.png" alt="Generated normals" loading="lazy"></span><span class="tile-cap" style="color:var(--accent)">normals out</span></div>
+      </div>
+    </div>
+    <!-- Canny + scene -> RGB -->
+    <div class="task">
+      <div class="task-head">
+        <div class="t-io"><span style="color:var(--text)">Canny</span> <span style="color:var(--muted)">+ scene</span> <span class="ar">→</span> <span class="to">RGB</span></div>
+        <div class="t-desc">Text fixes the colours that edges leave ambiguous.</div>
+      </div>
+      <div class="strip">
+        <div class="tile"><span class="tile-img glow"><span class="tile-tag">in</span><img src="assets/images/cs_canny.png" alt="Canny input" loading="lazy"></span><span class="tile-cap">Canny + text</span></div>
+        <div class="tile"><span class="tile-img lite glow"><span class="tile-tag out">gen</span><img src="assets/images/cs_rgbgen.png" alt="Generated RGB from canny and scene" loading="lazy"></span><span class="tile-cap" style="color:var(--accent)">RGB out</span></div>
+        <div class="tile"><span class="tile-img lite glow"><span class="tile-tag">gt</span><img src="assets/images/cs_rgbgt.png" alt="RGB ground truth" loading="lazy"></span><span class="tile-cap">RGB GT</span></div>
+      </div>
+    </div>
+    <!-- all -> RGB -->
+    <div class="task">
+      <div class="task-head">
+        <div class="t-io"><span style="color:var(--text)">All modalities</span> <span class="ar">→</span> <span class="to">RGB</span></div>
+        <div class="t-desc">More conditioning → sharper, better-grounded scenes.</div>
+      </div>
+      <div class="strip">
+        <div class="tile"><span class="tile-img lite glow"><span class="tile-tag">canny</span><img src="assets/images/abl_only.png" alt="RGB from canny only" loading="lazy"></span><span class="tile-cap">canny only</span></div>
+        <div class="tile"><span class="tile-img lite glow"><span class="tile-tag">+scene</span><img src="assets/images/abl_scene.png" alt="RGB from canny and scene" loading="lazy"></span><span class="tile-cap">+ scene</span></div>
+        <div class="tile"><span class="tile-img lite glow"><span class="tile-tag out">+all</span><img src="assets/images/abl_all.png" alt="RGB from all modalities" loading="lazy"></span><span class="tile-cap" style="color:var(--accent)">+ depth + normals</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="reveal">By the numbers</h3>
+  <div class="stats reveal">
+    <div class="stat"><div class="v" data-count="69.56" data-dec="2">0</div><div class="l">Canny→RGB<br>FID <span class="dir" style="color:var(--muted)">↓</span></div></div>
+    <div class="stat"><div class="v" data-count="0.309" data-dec="3">0</div><div class="l">RGB→Canny<br>F1 ODS <span class="dir">↑</span></div></div>
+    <div class="stat"><div class="v" data-count="0.049" data-dec="3">0</div><div class="l">Canny→Depth<br>AbsRel <span class="dir" style="color:var(--muted)">↓</span></div></div>
+    <div class="stat"><div class="v" data-count="9.1" data-dec="1">0<span class="u">°</span></div><div class="l">Canny→Normals<br>Angular err. <span class="dir" style="color:var(--muted)">↓</span></div></div>
+  </div>
+  <p class="fig-cap reveal">Evaluated on 100 held-out validation scenes. Decoding parameters tuned per direction (see §05).</p>
+</section>
+
+<div class="divider"></div>
+
+<!-- 5. CHAINED -->
+<section id="chained">
+  <div class="eyebrow reveal"><span class="num">04</span> Chained Generation</div>
+  <h2 class="reveal">Thinking through <span class="em">structure</span> first</h2>
+  <p class="reveal">Because each generated modality can be fed back as context for the next, we can build multi-step pipelines where the model commits to <strong>shape before appearance</strong>. From a text scene description alone it first imagines the edge map, then paints RGB onto that scaffold.</p>
+
+  <div class="figure reveal">
+    <div class="fig-flow">
+      <div class="tile" style="flex:1.3 1 0">
+        <span class="tile-img" style="background:var(--bg-card-2);aspect-ratio:auto;min-height:108px;display:flex;align-items:center;justify-content:center;padding:14px">
+          <span class="tile-tag">scene_desc</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.5;text-align:left">Object 1 · cube · gray<br>Object 2 · cube · cyan<br>Object 3 · cylinder…</span>
+        </span>
+        <span class="tile-cap"><b>Text prompt</b></span>
+      </div>
+      <div class="arrow gen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+      <div class="tile">
+        <span class="tile-img glow"><span class="tile-tag out">step 1</span><img src="assets/images/sc_canny.png" alt="Generated Canny from text" loading="lazy"></span>
+        <span class="tile-cap"><b>Canny</b><br>imagined structure</span>
+      </div>
+      <div class="arrow gen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+      <div class="tile">
+        <span class="tile-img lite glow"><span class="tile-tag out">step 2</span><img src="assets/images/sc_rgb.png" alt="Generated RGB from chain" loading="lazy"></span>
+        <span class="tile-cap"><b>RGB</b><br>painted on scaffold</span>
+      </div>
+    </div>
+    <p class="fig-cap"><b>Figure 3.</b> <code>scene_desc → Canny → RGB</code>. The intermediate edge map is a real, inspectable artifact — the model's structural "rough sketch" before it commits to colour.</p>
+  </div>
+
+  <div class="insight reveal">
+    <div class="il">What this buys us</div>
+    <p>The intermediate edge map is fully inspectable, so a failure is <b>diagnosable</b>: you can see whether the model got the layout wrong (bad edges) or the appearance wrong (good edges, bad paint). On CLEVR, chaining through edges produces RGB quality on par with direct text→RGB — the win is interpretability, not raw FID.</p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- 6. CREATIVE DEMOS -->
+<section id="demos">
+  <div class="eyebrow reveal"><span class="num">05</span> Creative Demos</div>
+  <h2 class="reveal">Going <span class="em">off-script</span></h2>
+  <p class="reveal">The interesting question isn't whether the model handles real Canny maps — it's what happens when we feed it edge maps it could <strong>never have seen in training</strong>: hand-drawn wireframes, synthetic primitives, sliding contours. The RGB stream follows along anyway.</p>
+
+  <div class="player reveal">
+    <div class="player-bar">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span class="fn">edge_translation.mp4</span>
+      <span class="live"><span class="blink"></span>RGB FOLLOWS EDGES</span>
+    </div>
+    <div class="stage">
+      <img src="assets/canny_rgb_synced.gif" alt="Canny edge map sliding left and right, with generated RGB following in lockstep" loading="lazy">
+    </div>
+    <p class="demo-cap">A single real Canny map is translated ±90px across the frame; for every shift the model re-paints a fresh RGB scene. The objects slide with their edges — appearance is locked to structure.</p>
+  </div>
+
+  <div class="demo-grid reveal">
+    <div class="demo">
+      <div class="dimg"><img src="assets/cube_rotation.gif" alt="Rotating wireframe cube generating RGB" loading="lazy"></div>
+      <div class="dmeta">
+        <div class="dt">Rotating wireframe → RGB</div>
+        <div class="dd">A programmatic 3D cube wireframe is rendered at 18 angles, tokenized as Canny, and turned into objects. The model has never seen a wireframe — yet it fills each pose.</div>
+      </div>
+    </div>
+    <div class="demo">
+      <div class="dimg"><img src="assets/edge_slide.gif" alt="Edge map sliding, RGB output" loading="lazy"></div>
+      <div class="dmeta">
+        <div class="dt">Edge sliding</div>
+        <div class="dd">Translating the Canny map horizontally drags the whole generated scene with it — a clean demonstration that the RGB output is genuinely conditioned on edge position.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- 7. THE NUMBERS -->
+<section id="numbers">
+  <div class="eyebrow reveal"><span class="num">06</span> The Numbers</div>
+  <h2 class="reveal">More context, <span class="em">better pictures</span></h2>
+  <p class="reveal">The headline quantitative result is a clean conditioning ablation: stacking modalities monotonically improves Canny→RGB generation. Edges give you structure; text and geometry give you everything edges throw away.</p>
+
+  <div class="table-wrap reveal">
+    <table>
+      <thead><tr><th>Conditioning</th><th>FID quality</th><th class="r">FID ↓</th></tr></thead>
+      <tbody>
+        <tr><td>Canny only</td><td><span class="bar" data-w="100" style="width:0"></span></td><td class="r">68.55</td></tr>
+        <tr><td>Canny + scene</td><td><span class="bar" data-w="97" style="width:0"></span></td><td class="r">66.87</td></tr>
+        <tr class="best"><td>Canny + depth + normals + scene</td><td><span class="bar" data-w="73" style="width:0"></span></td><td class="r">50.26</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="insight reveal">
+    <div class="il">Key result</div>
+    <p>Going from edges alone to full multi-modal conditioning is a <b>27% FID improvement</b> (68.55 → 50.26) — with zero retraining. The same checkpoint just listens to more of what it's given.</p>
+  </div>
+
+  <h3 class="reveal">Why edges need 4× more decoding steps</h3>
+  <p class="reveal">Generation direction matters for sampling. Painting <strong>into</strong> RGB is easy; the model fills a dense canvas confidently. Generating <strong>edges</strong> is harder — the target is mostly empty space, so the model needs far more refinement steps to decide which sparse patches should light up.</p>
+
+  <div class="table-wrap reveal">
+    <table>
+      <thead><tr><th>Direction</th><th class="r">steps</th><th class="r">temp</th><th class="r">top-p</th><th class="r">top-k</th></tr></thead>
+      <tbody>
+        <tr><td>X → RGB / Depth / Normals</td><td class="r">16</td><td class="r">0.3</td><td class="r">0.95</td><td class="r">10</td></tr>
+        <tr><td>X → Canny <span class="muted" style="font-family:var(--mono);font-size:11px">(sparse)</span></td><td class="r" style="color:var(--accent)">64</td><td class="r">0.5</td><td class="r">0.9</td><td class="r">0</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="fig-cap reveal">Sparse, mostly-empty edge grids need 4× the ROAR refinement steps of dense RGB targets.</p>
+</section>
+
+<div class="divider"></div>
+
+<!-- 8. WHAT DIDN'T WORK -->
+<section id="failures">
+  <div class="eyebrow reveal"><span class="num">07</span> What Didn't Work</div>
+  <h2 class="reveal">Two honest <span class="em">post-mortems</span></h2>
+  <p class="reveal">Both of these were good ideas that died for concrete, instructive reasons. We're keeping them in the record because the reasons point straight at our roadmap.</p>
+
+  <div class="fail reveal">
+    <div class="fl"><span class="x">✕</span> Abandoned · format mismatch</div>
+    <h3>Colour-metadata tokens</h3>
+    <p>Edges throw away colour. So we tried prepending <strong>40 metadata tokens</strong> — 10 objects × <code>[x, y, colour, shape]</code> — in front of the 256 edge tokens, giving the model a structured colour palette for free. The round-trip was flawless: positions, shapes and colours all decoded back perfectly.</p>
+    <div class="grid g4" style="margin:18px 0 6px">
+      <div class="tile"><span class="tile-img lite"><span class="tile-tag">rgb</span><img src="assets/images/meta_rgb.png" alt="RGB original" loading="lazy"></span><span class="tile-cap">RGB</span></div>
+      <div class="tile"><span class="tile-img"><span class="tile-tag">canny</span><img src="assets/images/meta_canny.png" alt="Canny edges" loading="lazy"></span><span class="tile-cap">Canny</span></div>
+      <div class="tile"><span class="tile-img"><span class="tile-tag">meta</span><img src="assets/images/meta_blobs.png" alt="Decoded metadata blobs" loading="lazy"></span><span class="tile-cap">decoded meta</span></div>
+      <div class="tile"><span class="tile-img"><span class="tile-tag out">recon</span><img src="assets/images/meta_recon.png" alt="Colorized reconstruction" loading="lazy"></span><span class="tile-cap">edge recon</span></div>
+    </div>
+    <p class="verdict"><b>Why it died:</b> 40 + 256 = <b>296 tokens</b>, but nano4M assumes a fixed 256-token length per modality. Supporting 296 would have meant variable-length masking or wasteful padding across <em>every</em> modality — too invasive for a "no architecture changes" project.</p>
+  </div>
+
+  <div class="fail reveal">
+    <div class="fl"><span class="x">✕</span> Abandoned · compute budget</div>
+    <h3>SAM-guided edges</h3>
+    <p>CLEVR Canny maps carry shadow gradients and background texture as noise. The fix: run <strong>SAM</strong> to segment objects first, then apply Canny <em>inside each instance mask</em> — clean, object-aware contours with the background suppressed entirely.</p>
+    <div class="grid g4" style="margin:18px 0 6px">
+      <div class="tile"><span class="tile-img lite"><span class="tile-tag">rgb</span><img src="assets/images/sam_rgb.png" alt="RGB scene" loading="lazy"></span><span class="tile-cap">RGB</span></div>
+      <div class="tile"><span class="tile-img lite"><span class="tile-tag">sam</span><img src="assets/images/sam_inst.png" alt="SAM instance masks" loading="lazy"></span><span class="tile-cap">SAM masks</span></div>
+      <div class="tile"><span class="tile-img"><span class="tile-tag">canny</span><img src="assets/images/sam_plain.png" alt="Plain Canny with noise" loading="lazy"></span><span class="tile-cap">plain Canny</span></div>
+      <div class="tile"><span class="tile-img"><span class="tile-tag out">clean</span><img src="assets/images/sam_canny.png" alt="SAM-guided Canny" loading="lazy"></span><span class="tile-cap">SAM → Canny</span></div>
+    </div>
+    <p class="verdict"><b>Why it died:</b> 60k samples × 10 augmentations = <b>600k SAM forward passes</b> on a ViT-H backbone. We pre-tokenized only ~1.6k samples before it was clear this would never finish on our GPU budget.</p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- 9. WHAT'S NEXT -->
+<section id="next">
+  <div class="eyebrow reveal"><span class="num">08</span> What's Next</div>
+  <h2 class="reveal">Failures become <span class="em">directions</span></h2>
+  <p class="reveal">Each dead end above has a natural sequel. The roadmap is mostly about removing the two constraints that stopped us — compute and the fixed token length.</p>
+
+  <div class="road reveal">
+    <div class="ritem">
+      <div class="rt">Faster segmentation <span class="from">← SAM post-mortem</span></div>
+      <div class="rd">Revisit object-aware edges with <strong>SAM 2</strong> or <strong>FastSAM</strong> — orders of magnitude cheaper, which makes 600k forward passes tractable.</div>
+    </div>
+    <div class="ritem">
+      <div class="rt">Colour-aware edge tokenizer <span class="from">← metadata post-mortem</span></div>
+      <div class="rd">Train a tokenizer that packs edges <em>and</em> local colour into the same 256-token space — the colour signal we wanted, without the 296-length problem.</div>
+    </div>
+    <div class="ritem">
+      <div class="rt">Soft edges</div>
+      <div class="rd">Swap binary Canny for continuous boundary detectors (<strong>HED</strong>, <strong>PiDiNet</strong>) that preserve gradient magnitude instead of thresholding it away.</div>
+    </div>
+    <div class="ritem">
+      <div class="rt">Natural images</div>
+      <div class="rd">Move beyond clean synthetic scenes to <strong>COCO / ADE20K</strong>, where background clutter is exactly where object-aware edges should pay off.</div>
+    </div>
+    <div class="ritem">
+      <div class="rt">A sibling modality</div>
+      <div class="rd">Add <strong>semantic segmentation</strong> alongside edges — another classical-CV signal, validating that the 4M recipe scales to many derived modalities.</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- 10. TEAM -->
+<section id="team">
+  <div class="eyebrow reveal"><span class="num">09</span> The Team</div>
+  <h2 class="reveal">Individual contributions</h2>
+  <div class="team reveal">
+    <div class="member">
+      <div class="av">AB</div>
+      <div class="mn">Alae Baklouti</div>
+      <div class="mc">[ TODO — e.g. edge extraction pipeline, tokenization, website ]</div>
+    </div>
+    <div class="member">
+      <div class="av">KH</div>
+      <div class="mn">Kenza Hassayoune</div>
+      <div class="mc">[ TODO — e.g. model training, config setup, evaluation ]</div>
+    </div>
+    <div class="member">
+      <div class="av">M3</div>
+      <div class="mn">[Member 3]</div>
+      <div class="mc">[ TODO — e.g. ablation studies, report writing ]</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="frow">COM-304 · Foundation Models · EPFL · Spring 2026</div>
+  <div class="frow">nano4M extended with <span style="color:var(--accent)">tok_canny_edge@256</span> · DiVAE tokenizer · vocab 8192</div>
+  <div class="refs">
+    <a href="https://4m.epfl.ch/">4M</a>
+    <a href="https://arxiv.org/abs/2406.09406">4M-21</a>
+    <a href="https://github.com/EPFL-VILAB/com-304-FM-project-2026">Course repo</a>
+    <a href="#top">↑ Back to top</a>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Scroll reveal ----------
+  var revealEls = document.querySelectorAll('.reveal, .divider');
+  if ('IntersectionObserver' in window){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, {threshold:0.12, rootMargin:'0px 0px -8% 0px'});
+    revealEls.forEach(function(el, i){
+      // small stagger for siblings within the same parent
+      el.style.transitionDelay = (Math.min(i % 6, 5) * 55) + 'ms';
+      io.observe(el);
+    });
+  } else {
+    revealEls.forEach(function(el){ el.classList.add('in'); });
+  }
+
+  // ---------- Count-up stats ----------
+  function animateCount(el){
+    var target = parseFloat(el.getAttribute('data-count'));
+    var dec = parseInt(el.getAttribute('data-dec') || '0', 10);
+    var unit = el.querySelector('.u');
+    var unitHTML = unit ? unit.outerHTML : '';
+    var dur = 1300, start = null;
+    function step(ts){
+      if (!start) start = ts;
+      var p = Math.min((ts - start) / dur, 1);
+      var eased = 1 - Math.pow(1 - p, 3);
+      var val = (target * eased).toFixed(dec);
+      el.firstChild ? (el.childNodes[0].nodeValue = val) : (el.textContent = val);
+      el.innerHTML = val + unitHTML;
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  var counters = document.querySelectorAll('[data-count]');
+  if ('IntersectionObserver' in window){
+    var cio = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting){ animateCount(e.target); cio.unobserve(e.target); }
+      });
+    }, {threshold:0.5});
+    counters.forEach(function(c){ cio.observe(c); });
+  } else {
+    counters.forEach(animateCount);
+  }
+
+  // ---------- Animated bars ----------
+  var bars = document.querySelectorAll('.bar[data-w]');
+  if ('IntersectionObserver' in window){
+    var bio = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting){
+          var w = e.target.getAttribute('data-w');
+          setTimeout(function(){ e.target.style.width = w + '%'; }, 120);
+          bio.unobserve(e.target);
+        }
+      });
+    }, {threshold:0.4});
+    bars.forEach(function(b){ bio.observe(b); });
+  } else {
+    bars.forEach(function(b){ b.style.width = b.getAttribute('data-w') + '%'; });
+  }
+
+  // ---------- Sticky nav active highlight ----------
+  var sections = Array.prototype.slice.call(document.querySelectorAll('section[id]'));
+  var navLinks = {};
+  document.querySelectorAll('nav a[href^="#"]').forEach(function(a){
+    navLinks[a.getAttribute('href').slice(1)] = a;
+  });
+  function onScroll(){
+    var pos = window.scrollY + 120;
+    var current = null;
+    for (var i=0;i<sections.length;i++){
+      if (sections[i].offsetTop <= pos) current = sections[i].id;
+    }
+    Object.keys(navLinks).forEach(function(id){
+      navLinks[id].classList.toggle('active', id === current);
+    });
+    // hero parallax glow
+    var glow = document.getElementById('heroGlow');
+    if (glow){ glow.style.transform = 'translateX(-50%) translateY(' + (window.scrollY * 0.28) + 'px)'; }
+  }
+  var ticking = false;
+  window.addEventListener('scroll', function(){
+    if (!ticking){ requestAnimationFrame(function(){ onScroll(); ticking = false; }); ticking = true; }
+  }, {passive:true});
+  onScroll();
+})();
+</script>
+</body>
+</html>
