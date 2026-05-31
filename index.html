@@ -688,19 +688,42 @@
   <h2 class="reveal">Individual contributions</h2>
   <div class="team reveal">
     <div class="member">
-      <div class="av">AB</div>
-      <div class="mn">Alae Baklouti</div>
-      <div class="mc">[ TODO — e.g. edge extraction pipeline, tokenization, website ]</div>
+      <div class="av">MB</div>
+      <div class="mn">Mariem Baklouti</div>
+      <div class="mc">Designed and implemented the
+              aligned tokenization pipeline (raw RGB + crop settings +
+              DiVAE encoding), identified and fixed the critical [−1, 1]
+              normalization mismatch in the encoder input, built the ultrafast
+              batched pre-tokenization routine (∼45× speedup over the
+              naive baseline), and produced the val/train Canny token splits
+              used for training.</div>
     </div>
     <div class="member">
       <div class="av">KH</div>
       <div class="mn">Kenza Hassayoune</div>
-      <div class="mc">[ TODO — e.g. model training, config setup, evaluation ]</div>
+      <div class="mc">Configured and ran the 5-modality
+            training (92.3M parameters, dim 640, depth 8+8); imple-
+            mented the FID, F1 ODS, AbsRel, and angular-error eval-
+            uation; implemented edge consistency, round-trip
+            consistency, and chain vs. direct evaluation; shipped the trained checkpoint to the team.</div>
     </div>
     <div class="member">
-      <div class="av">M3</div>
-      <div class="mn">[Member 3]</div>
-      <div class="mc">[ TODO — e.g. ablation studies, report writing ]</div>
+      <div class="av">MKR</div>
+      <div class="mn">Mohamed Khalil Romdhane</div>
+      <div class="mc">Implemented the SAM-
+        based shadow filtering pipeline (detect_shadow_mask,
+        sam_then_canny), ran the resolution sweep,
+        explored hue and colored edge map variants, and produced
+        the SAM vs. plain Canny qualitative comparisons used in the
+        appendix and also helped sweeping over top_k, top_p and the number of steps to get the best combination</div>
+    </div>
+    <div class="member">
+      <div class="av">AM</div>
+      <div class="mn">Alae Messaoudi</div>
+      <div class="mc">Designed and implemented the infer-
+ence generation chains (RGB↔Canny, scene→Canny→RGB),
+the construct_input_from_sample and
+build_input utilities, and the multi-modal input ablation; produced the qualitative comparison figures.</div>
     </div>
   </div>
 </section>
